@@ -1,5 +1,8 @@
 *
 !.gitignore
+!data/
+!data/*
 !hauptaufgabe_src/
 !hauptaufgabe_src/*
 !hauptaufgabe_src/mainplugin/*
+hauptaufgabe_src/CMakeLists.txt.user
