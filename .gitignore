@@ -1,3 +1,5 @@
 *
 !.gitignore
-!*/hauptaufgabe_src/*
+!hauptaufgabe_src/
+!hauptaufgabe_src/*
+!hauptaufgabe_src/mainplugin/*
