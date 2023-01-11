@@ -1,3 +1,7 @@
+### Important Notice:
+**For 2D datatsets with 3rd dimension != 0 use "force 2D" in FAnToM Load/VTK-Plugin dimension options.**
+
+
 <u>ridges_2d_uniform_cellbased.vtk</u>
 
 1) grid:  
