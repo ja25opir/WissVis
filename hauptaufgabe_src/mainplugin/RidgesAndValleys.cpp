@@ -29,7 +29,7 @@ namespace
             DataOutputs(fantom::DataOutputs::Control& control)
                 : DataAlgorithm::DataOutputs(control)
             {
-                add <LineSet<3>> ("RidgesAndValleys");
+                add <const Grid<2>> ("RidgesAndValleys");
             }
         };
 
@@ -40,39 +40,49 @@ namespace
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
-            std::shared_ptr<const Function<Scalar>> cellFunction2D = options.get<Function<Scalar>>("Field_Cellbased2D");
-            std::shared_ptr<const Function<Scalar>> pointFunction2D = options.get<Function<Scalar>>("Field_Pointbased2D");
+            std::shared_ptr<const Function<Scalar>> cFunction2D = options.get<Function<Scalar>>("Field_Cellbased2D");
+            std::shared_ptr<const Function<Scalar>> pFunction2D = options.get<Function<Scalar>>("Field_Pointbased2D");
 
-            std::shared_ptr<const Function<Scalar>> cellFunction3D = options.get<Function<Scalar>>("Field_Cellbased3D");
-            std::shared_ptr<const Function<Scalar>> pointFunction3D = options.get<Function<Scalar>>("Field_Pointbased3D");
+            std::shared_ptr<const Function<Scalar>> cFunction3D = options.get<Function<Scalar>>("Field_Cellbased3D");
+            std::shared_ptr<const Function<Scalar>> pFunction3D = options.get<Function<Scalar>>("Field_Pointbased3D");
 
 
-            if(!cellFunction3D)
+            if(!cFunction2D && !pFunction2D && !cFunction3D && !pFunction3D)
             {
                 infoLog() << "No input field!" << std::endl;
                 return;
             }
 
-            std::shared_ptr<const Grid<3>> grid = std::dynamic_pointer_cast< const Grid<3>>(pointFunction3D->domain());
-
-            if(!grid)
+            if(cFunction2D)
             {
-                throw std::logic_error( "Wrong type of grid!" );
+                std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
+                const ValueArray<Tensor<double>>& cFieldValues2D = cFunction2D->values();
+                const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
             }
 
-            const ValueArray<Tensor<double>>& fieldValues = pointFunction3D->values();
-            const ValueArray<Point3>& gridPoints = grid->points();
-
-            infoLog() << "Field Values: ";
-            for(size_t i = 0; i < gridPoints.size(); ++i)
+            if(pFunction2D)
             {
-                infoLog() << fieldValues[i] << std::endl;
+                std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
+                const ValueArray<Tensor<double>>& pFieldValues2D = pFunction2D->values();
+                const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
+
+                setResult("RidgesAndValleys", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
 
-            LineSet<3> RidgesAndValleysLines;
-            std::list<size_t> RidgesAndValleysIndices;
+            if(cFunction3D)
+            {
+                std::shared_ptr<const Grid<3>> cGrid3D = std::dynamic_pointer_cast< const Grid<3>>(cFunction3D->domain());
+                const ValueArray<Tensor<double>>& cFieldValues3D = cFunction3D->values();
+                const ValueArray<Point3>& cGridPoints3D = cGrid3D->points();
+            }
 
-            setResult("RidgesAndValleys", std::make_shared<LineSet<3>>(RidgesAndValleysLines));
+            if(pFunction3D)
+            {
+                std::shared_ptr<const Grid<3>> pGrid3D = std::dynamic_pointer_cast< const Grid<3>>(pFunction3D->domain());
+                const ValueArray<Tensor<double>>& pFieldValues3D = pFunction3D->values();
+                const ValueArray<Point3>& pGridPoints3D = pGrid3D->points();
+            }
+
         }
     };
 
