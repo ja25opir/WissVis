@@ -9,6 +9,12 @@
   * dimensions: 500 x 500 x 67107712 (?)
   * data: line 7 - 250.006  
     &mdash;> 250.000 gridpoints  
+    value range: <br />
+    ```x: -249.5 to 249.5``` <br />
+    ```y: -249.5 to 249.5``` <br />
+    stepsize: <br />
+    ```0.5```
+                 
     &mdash;> 249.001 cells (499 x 499)
 
 2) scalar:  
@@ -22,6 +28,12 @@
   * dimensions: 500 x 500 x 67107712 (?)
   * data: line 7 - 250.006  
     &mdash;> 250.000 gridpoints  
+    value range: <br />
+    ```x: -249.5 to 249.5``` <br />
+    ```y: -249.5 to 249.5``` <br />
+    stepsize: <br />
+    ```0.5```
+    
     &mdash;> == 250.000 datapoints (500 x 500)
 
 2) scalar:  
@@ -36,6 +48,12 @@
     (looks like 500 x 500 x 500)
   * data: line 6 - 250.005  
     &mdash;> 250.000 gridpoints
+    value range: <br />
+    ```x: -249.5 to 249.5``` <br />
+    ```y: -249.5 to 249.5``` <br />
+    ```z: ???``` <br />
+    stepsize: <br />
+    ```0.5```
 
 2) cells:
 
@@ -60,6 +78,12 @@
     (looks like 500 x 500 x 500)
   * data: line 6 - 250.005  
     &mdash;> 250.000 gridpoints
+    value range: <br />
+    ```x: -249.5 to 249.5``` <br />
+    ```y: -249.5 to 249.5``` <br />
+    ```z: ???``` <br />
+    stepsize: <br />
+    ```0.5```
 
 2) cells:
 
