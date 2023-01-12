@@ -2,6 +2,7 @@
 #include <fantom/dataset.hpp>
 #include <fantom/graphics.hpp>
 #include <fantom/register.hpp>
+#include <math.h>
 
 using namespace fantom;
 
@@ -29,13 +30,37 @@ namespace
             DataOutputs(fantom::DataOutputs::Control& control)
                 : DataAlgorithm::DataOutputs(control)
             {
-                add <const Grid<2>> ("RidgesAndValleys");
+                add <const Grid<2>> ("RidgesAndValleys 2D");
+                add <const Grid<3>> ("RidgesAndValleys 3D");
             }
         };
 
         RidgesAndValleys (InitData& data)
             : DataAlgorithm (data)
         {
+        }
+
+        std::vector<Point2> calcGradients(const ValueArray<Point2>& gridPoints, const ValueArray<Tensor<double>>& fieldValues)
+        {
+            double eta = 0.5;
+            double gradient1;
+            double gradient2;
+            std::vector<Point2> interesting_points;
+
+            for(size_t i = 0; i < gridPoints.size()-1-eta; ++i)
+            {
+                gradient1 = ((fieldValues[i][0] + eta) - fieldValues[i][0]) / eta;
+                gradient2 = ((fieldValues[i+1][0] + eta) - fieldValues[i+1][0]) / eta;
+
+                infoLog() << gradient1 << "   " << gradient2 << std::endl;
+
+                if(signbit(gradient1) != signbit(gradient2))
+                {
+                    infoLog() << "found interesting point" << std::endl;
+                    interesting_points.push_back(gridPoints[i]);
+                }
+            }
+            return interesting_points;
         }
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
@@ -66,7 +91,14 @@ namespace
                 const ValueArray<Tensor<double>>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
 
-                setResult("RidgesAndValleys", std::shared_ptr<const Grid<2>>(pGrid2D));
+                std::vector<Point2> interesting_points = calcGradients(pGridPoints2D, pFieldValues2D);
+
+                for(size_t i = 0; i < interesting_points.size(); ++i)
+                {
+                    infoLog() << interesting_points[i] << std::endl;
+                }
+
+                setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
 
             if(cFunction3D)
@@ -81,6 +113,9 @@ namespace
                 std::shared_ptr<const Grid<3>> pGrid3D = std::dynamic_pointer_cast< const Grid<3>>(pFunction3D->domain());
                 const ValueArray<Tensor<double>>& pFieldValues3D = pFunction3D->values();
                 const ValueArray<Point3>& pGridPoints3D = pGrid3D->points();
+
+                setResult("RidgesAndValleys 3D", std::shared_ptr<const Grid<3>>(pGrid3D));
+
             }
 
         }
