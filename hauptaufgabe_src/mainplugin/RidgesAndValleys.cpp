@@ -40,33 +40,73 @@ namespace
         {
         }
 
-        std::vector<Point2> calcGradients(const ValueArray<Point2>& gridPoints, const ValueArray<Tensor<double>>& fieldValues)
+        bool findInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field) //
         {
-            double eta = 0.5;
+            double epsilon = 0.1;
             double gradient1;
             double gradient2;
-            std::vector<Point2> interesting_points;
+            auto evaluator = field->makeEvaluator();
+            //auto evaluator2 = field->makeDiscreteEvaluator();
 
-            for(size_t i = 0; i < gridPoints.size()-1-eta; ++i)
+            for(size_t i = 0; i < cell.numVertices(); ++i)
             {
-                gradient1 = ((fieldValues[i][0] + eta) - fieldValues[i][0]) / eta;
-                gradient2 = ((fieldValues[i+1][0] + eta) - fieldValues[i+1][0]) / eta;
+                Point2 evaluatorPointX = gridPoints[cell.index(i)];
+                Point2 evaluatorPointY = gridPoints[cell.index(i)];
+                evaluatorPointX[0] += epsilon; //first in x direction
+                evaluatorPointY[1] += epsilon; //then in y direction
 
-                infoLog() << gradient1 << "   " << gradient2 << std::endl;
+                if(evaluator->reset(evaluatorPointX),1)
+                {
+                    auto valueX = evaluator->value();
+
+                    infoLog() << "grid point X: " << evaluatorPointX << std::endl;
+                    infoLog() << "eval value: " << valueX << std::endl;
+                }
+                else
+                {
+                    infoLog() << "outside domain" << std::endl;
+                    infoLog() << "grid point X: " << evaluatorPointX << std::endl;
+                }
+
+                if(evaluator->reset(evaluatorPointY),1)
+                {
+                    auto valueY = evaluator->value();
+
+                    infoLog() << "grid point Y: " << evaluatorPointY << std::endl;
+                    infoLog() << "eval value: " << valueY << std::endl;
+                }
+                else
+                {
+                    infoLog() << "outside domain" << std::endl;
+                    infoLog() << "grid point Y: " << evaluatorPointY << std::endl;
+                }
+
+                /*
+                auto value = evaluator2->value(cell.index(i));
+                infoLog() << "discrete value: " << value << std::endl;
+                infoLog() << "cell coord " << i << ": " << cell.index(i) << std::endl;
+                infoLog() << "grid point: " << gridPoints[cell.index(i)] << std::endl;
+                */
+
+                //gradient1 = ((fieldValues[i][0] + epsilon) - fieldValues[i][0]) / epsilon;
+                //gradient2 = ((fieldValues[i+1][0] + epsilon) - fieldValues[i+1][0]) / epsilon;
+
+                //infoLog() << gradient1 << "   " << gradient2 << std::endl;
 
                 if(signbit(gradient1) != signbit(gradient2))
                 {
-                    infoLog() << "found interesting point" << std::endl;
-                    interesting_points.push_back(gridPoints[i]);
+                    infoLog() << "found interesting cell" << std::endl;
+                    return true;
                 }
             }
-            return interesting_points;
+            return false;
         }
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
             std::shared_ptr<const Function<Scalar>> cFunction2D = options.get<Function<Scalar>>("Field_Cellbased2D");
             std::shared_ptr<const Function<Scalar>> pFunction2D = options.get<Function<Scalar>>("Field_Pointbased2D");
+            std::shared_ptr<const Field<2, Scalar>> pField2D = options.get<Field<2, Scalar>>("Field_Pointbased2D");
 
             std::shared_ptr<const Function<Scalar>> cFunction3D = options.get<Function<Scalar>>("Field_Cellbased3D");
             std::shared_ptr<const Function<Scalar>> pFunction3D = options.get<Function<Scalar>>("Field_Pointbased3D");
@@ -81,21 +121,27 @@ namespace
             if(cFunction2D)
             {
                 std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
-                const ValueArray<Tensor<double>>& cFieldValues2D = cFunction2D->values();
+                const ValueArray<Scalar>& cFieldValues2D = cFunction2D->values();
                 const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
             }
 
             if(pFunction2D)
             {
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
-                const ValueArray<Tensor<double>>& pFieldValues2D = pFunction2D->values();
+                const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
+                //const ValueArray<Cell>& pGridCells2D = pGrid2D->cells();
 
-                std::vector<Point2> interesting_points = calcGradients(pGridPoints2D, pFieldValues2D);
+                std::vector<Cell> interestingCell;
 
-                for(size_t i = 0; i < interesting_points.size(); ++i)
+
+                for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
-                    infoLog() << interesting_points[i] << std::endl;
+                    Cell cell = pGrid2D->cell(i);
+                    if(findInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D))
+                    {
+                        interestingCell.push_back(cell);
+                    }
                 }
 
                 setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
@@ -104,14 +150,14 @@ namespace
             if(cFunction3D)
             {
                 std::shared_ptr<const Grid<3>> cGrid3D = std::dynamic_pointer_cast< const Grid<3>>(cFunction3D->domain());
-                const ValueArray<Tensor<double>>& cFieldValues3D = cFunction3D->values();
+                const ValueArray<Scalar>& cFieldValues3D = cFunction3D->values();
                 const ValueArray<Point3>& cGridPoints3D = cGrid3D->points();
             }
 
             if(pFunction3D)
             {
                 std::shared_ptr<const Grid<3>> pGrid3D = std::dynamic_pointer_cast< const Grid<3>>(pFunction3D->domain());
-                const ValueArray<Tensor<double>>& pFieldValues3D = pFunction3D->values();
+                const ValueArray<Scalar>& pFieldValues3D = pFunction3D->values();
                 const ValueArray<Point3>& pGridPoints3D = pGrid3D->points();
 
                 setResult("RidgesAndValleys 3D", std::shared_ptr<const Grid<3>>(pGrid3D));
