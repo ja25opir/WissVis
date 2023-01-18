@@ -43,8 +43,8 @@ namespace
         bool findInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field) //
         {
             double epsilon = 0.1;
-            double gradient1;
-            double gradient2;
+            std::vector<double> gradientsX;
+            std::vector<double> gradientsY;
             auto evaluator = field->makeEvaluator();
             //auto evaluator2 = field->makeDiscreteEvaluator();
 
@@ -55,31 +55,44 @@ namespace
                 evaluatorPointX[0] += epsilon; //first in x direction
                 evaluatorPointY[1] += epsilon; //then in y direction
 
-                if(evaluator->reset(evaluatorPointX),1)
+                if(evaluator->reset(evaluatorPointX, 0))
                 {
                     auto valueX = evaluator->value();
+                    gradientsX.push_back((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon);
 
                     infoLog() << "grid point X: " << evaluatorPointX << std::endl;
-                    infoLog() << "eval value: " << valueX << std::endl;
+                    infoLog() << "eval value: " << valueX[0] << std::endl;
+                    infoLog() << "gradient: " << gradientsX.back() << std::endl;
+
                 }
                 else
                 {
                     infoLog() << "outside domain" << std::endl;
-                    infoLog() << "grid point X: " << evaluatorPointX << std::endl;
                 }
 
-                if(evaluator->reset(evaluatorPointY),1)
+                if(evaluator->reset(evaluatorPointY, 0))
                 {
                     auto valueY = evaluator->value();
+                    gradientsY.push_back((valueY[0] - fieldValues[cell.index(i)][0]) / epsilon);
 
                     infoLog() << "grid point Y: " << evaluatorPointY << std::endl;
-                    infoLog() << "eval value: " << valueY << std::endl;
+                    infoLog() << "eval value: " << valueY[0] << std::endl;
+                    infoLog() << "gradient: " << gradientsY.back() << std::endl;
+
+
                 }
                 else
                 {
                     infoLog() << "outside domain" << std::endl;
-                    infoLog() << "grid point Y: " << evaluatorPointY << std::endl;
                 }
+            }
+
+            if(signbit(gradientsX[0]) != signbit(gradientsX[3]) || signbit(gradientsX[1]) != signbit(gradientsX[2]))
+            {
+                infoLog() << "------------------found interesting cell! "<< std::endl; //<< gradientsX[0] << ", " << gradientsX[3] << "," << gradientsX[1] << ", " << gradientsX[2] <<std::endl;
+                return true;
+            }
+            return false;
 
                 /*
                 auto value = evaluator2->value(cell.index(i));
@@ -88,18 +101,14 @@ namespace
                 infoLog() << "grid point: " << gridPoints[cell.index(i)] << std::endl;
                 */
 
-                //gradient1 = ((fieldValues[i][0] + epsilon) - fieldValues[i][0]) / epsilon;
-                //gradient2 = ((fieldValues[i+1][0] + epsilon) - fieldValues[i+1][0]) / epsilon;
-
                 //infoLog() << gradient1 << "   " << gradient2 << std::endl;
 
+                /*
                 if(signbit(gradient1) != signbit(gradient2))
                 {
                     infoLog() << "found interesting cell" << std::endl;
                     return true;
-                }
-            }
-            return false;
+                }*/
         }
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
