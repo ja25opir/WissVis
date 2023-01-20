@@ -41,19 +41,44 @@ namespace
         {
         }
 
+        bool compareGradients(std::vector<std::valarray<double>> gradients)
+        {
+            if(signbit(gradients[0][0]) != signbit(gradients[1][0]) || signbit(gradients[0][1]) != signbit(gradients[1][1]))
+            {
+                return true;
+            }
+            else if(signbit(gradients[0][0]) != signbit(gradients[3][0]) || signbit(gradients[0][1]) != signbit(gradients[3][1]))
+            {
+                return true;
+            }
+            else if(signbit(gradients[1][0]) != signbit(gradients[2][0]) || signbit(gradients[1][1]) != signbit(gradients[2][1]))
+            {
+                return true;
+            }
+            else if(signbit(gradients[2][0]) != signbit(gradients[3][0]) || signbit(gradients[2][1]) != signbit(gradients[3][1]))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+
+        }
+
         bool isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field)
         {
             double epsilon = 0.1;
-            //std::vector<double> gradientsX;
-            //std::vector<double> gradientsY;
 
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
             std::valarray<double> baseVectorX = {1,0};
             std::valarray<double> baseVectorY = {0,1};
 
+            std::valarray<double> gradientCombined;
+            std::vector<std::valarray<double>> gradientVector;
+
             auto evaluator = field->makeEvaluator();
-            //auto evaluator2 = field->makeDiscreteEvaluator();
 
             for(size_t i = 0; i < cell.numVertices(); ++i)
             {
@@ -76,8 +101,7 @@ namespace
                 }
                 else
                 {
-                    infoLog() << "outside domain" << std::endl;
-
+                    //infoLog() << "outside domain" << std::endl;
                 }
 
                 evaluatorPointY[1] += epsilon; //then in y direction
@@ -94,11 +118,21 @@ namespace
                 }
                 else
                 {
-                    infoLog() << "outside domain" << std::endl;
+                    //infoLog() << "outside domain" << std::endl;
                 }
 
-                std::valarray<double> gradientCombined = gradientX + gradientY;
-                infoLog() << "gradient: " << gradientCombined[0] << "; " << gradientCombined[1] << std::endl;
+                gradientCombined = gradientX + gradientY;
+                gradientVector.push_back(gradientCombined);
+                //infoLog() << "gradient: " << gradientCombined[0] << "; " << gradientCombined[1] << std::endl;
+            }
+
+            if(!gradientVector.empty())
+            {
+                return compareGradients(gradientVector);
+            }
+            else
+            {
+                return false;
             }
 
             /*  Quad
@@ -107,12 +141,6 @@ namespace
                |    |
                1----2
             */
-            /*
-            if(signbit(gradientsX[0]) != signbit(gradientsX[3]) || signbit(gradientsX[1]) != signbit(gradientsX[2]) || signbit(gradientsY[0]) != signbit(gradientsY[1]) || signbit(gradientsY[2]) != signbit(gradientsY[3]))
-            {
-                return true;
-            }
-            return false;*/
         }
 
 
@@ -144,9 +172,12 @@ namespace
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
                 const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
+                PointSetBase::BoundingBox pBoundingBox2D = pGrid2D->getBoundingBox();
+
                 //const ValueArray<Cell>& pGridCells2D = pGrid2D->cells();
 
                 std::vector<Cell> interestingCell;
+                std::vector<int> interestingCellIndices;
 
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
@@ -154,10 +185,12 @@ namespace
                     Cell cell = pGrid2D->cell(i);
                     if(isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D))
                     {
-                        infoLog() << "------------------found interesting cell at: " << i << std::endl;
+                        //infoLog() << "------------------found interesting cell at: " << i << std::endl;
                         interestingCell.push_back(cell);
+                        interestingCellIndices.push_back(i);
                     }
                 }
+                infoLog() << "finished" << std::endl;
 
                 setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
