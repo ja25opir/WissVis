@@ -3,6 +3,7 @@
 #include <fantom/graphics.hpp>
 #include <fantom/register.hpp>
 #include <math.h>
+#include<valarray>
 
 using namespace fantom;
 
@@ -43,8 +44,14 @@ namespace
         bool isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field)
         {
             double epsilon = 0.1;
-            std::vector<double> gradientsX;
-            std::vector<double> gradientsY;
+            //std::vector<double> gradientsX;
+            //std::vector<double> gradientsY;
+
+            std::valarray<double> gradientX;
+            std::valarray<double> gradientY;
+            std::valarray<double> baseVectorX = {1,0};
+            std::valarray<double> baseVectorY = {0,1};
+
             auto evaluator = field->makeEvaluator();
             //auto evaluator2 = field->makeDiscreteEvaluator();
 
@@ -58,8 +65,10 @@ namespace
 
                 if(evaluator->reset(evaluatorPointX, 0))
                 {
+
                     auto valueX = evaluator->value();
-                    gradientsX.push_back((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon);
+                    gradientX = ((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon) * baseVectorX;
+                    //gradientsX.push_back((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon);
 
                     //infoLog() << "grid point X: " << evaluatorPointX << std::endl;
                     //infoLog() << "eval value: " << valueX[0] << std::endl;
@@ -68,6 +77,7 @@ namespace
                 else
                 {
                     infoLog() << "outside domain" << std::endl;
+
                 }
 
                 evaluatorPointY[1] += epsilon; //then in y direction
@@ -75,7 +85,8 @@ namespace
                 if(evaluator->reset(evaluatorPointY, 0))
                 {
                     auto valueY = evaluator->value();
-                    gradientsY.push_back((valueY[0] - fieldValues[cell.index(i)][0]) / epsilon);
+                    gradientY = ((valueY[0] - fieldValues[cell.index(i)][0]) / epsilon) * baseVectorY;
+                    //gradientsY.push_back((valueY[0] - fieldValues[cell.index(i)][0]) / epsilon);
 
                     //infoLog() << "grid point Y: " << evaluatorPointY << std::endl;
                     //infoLog() << "eval value: " << valueY[0] << std::endl;
@@ -85,6 +96,9 @@ namespace
                 {
                     infoLog() << "outside domain" << std::endl;
                 }
+
+                std::valarray<double> gradientCombined = gradientX + gradientY;
+                infoLog() << "gradient: " << gradientCombined[0] << "; " << gradientCombined[1] << std::endl;
             }
 
             /*  Quad
@@ -93,12 +107,12 @@ namespace
                |    |
                1----2
             */
-
+            /*
             if(signbit(gradientsX[0]) != signbit(gradientsX[3]) || signbit(gradientsX[1]) != signbit(gradientsX[2]) || signbit(gradientsY[0]) != signbit(gradientsY[1]) || signbit(gradientsY[2]) != signbit(gradientsY[3]))
             {
                 return true;
             }
-            return false;
+            return false;*/
         }
 
 
