@@ -43,6 +43,13 @@ namespace
 
         bool compareGradients(std::vector<std::valarray<double>> gradients)
         {
+            /*  Quad
+               0----3
+               |    |
+               |    |
+               1----2
+            */
+
             if(signbit(gradients[0][0]) != signbit(gradients[1][0]) || signbit(gradients[0][1]) != signbit(gradients[1][1]))
             {
                 return true;
@@ -84,13 +91,12 @@ namespace
             {
                 //TODO Randbetrachtung
                 Point2 evaluatorPointX = gridPoints[cell.index(i)];
-                Point2 evaluatorPointY = gridPoints[cell.index(i)];
+                Point2 evaluatorPointY = evaluatorPointX;
 
                 evaluatorPointX[0] += epsilon; //first in x direction
 
                 if(evaluator->reset(evaluatorPointX, 0))
                 {
-
                     auto valueX = evaluator->value();
                     gradientX = ((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon) * baseVectorX;
                     //gradientsX.push_back((valueX[0] - fieldValues[cell.index(i)][0]) / epsilon);
@@ -101,7 +107,17 @@ namespace
                 }
                 else
                 {
-                    //infoLog() << "outside domain" << std::endl;
+                    evaluatorPointX[0] -= 2*epsilon;
+
+                    if(evaluator->reset(evaluatorPointX, 0))
+                    {
+                        auto valueX = evaluator->value();
+                        gradientX = ((fieldValues[cell.index(i)][0] - valueX[0]) / epsilon) * baseVectorX;
+                    }
+                    else
+                    {
+                        infoLog() << "outside domain" << std::endl;
+                    }
                 }
 
                 evaluatorPointY[1] += epsilon; //then in y direction
@@ -118,7 +134,17 @@ namespace
                 }
                 else
                 {
-                    //infoLog() << "outside domain" << std::endl;
+                    evaluatorPointY[1] -= 2*epsilon;
+
+                    if(evaluator->reset(evaluatorPointY, 0))
+                    {
+                        auto valueY = evaluator->value();
+                        gradientY = ((fieldValues[cell.index(i)][0] - valueY[0]) / epsilon) * baseVectorY;
+                    }
+                    else
+                    {
+                        infoLog() << "outside domain" << std::endl;
+                    }
                 }
 
                 gradientCombined = gradientX + gradientY;
@@ -132,15 +158,9 @@ namespace
             }
             else
             {
+                infoLog() << "empty list" << std::endl;
                 return false;
             }
-
-            /*  Quad
-               0----3
-               |    |
-               |    |
-               1----2
-            */
         }
 
 
@@ -160,15 +180,12 @@ namespace
                 return;
             }
 
-            if(cFunction2D)
+            if(pFunction2D && cFunction2D)
             {
                 std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
                 const ValueArray<Scalar>& cFieldValues2D = cFunction2D->values();
                 const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
-            }
 
-            if(pFunction2D)
-            {
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
                 const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
@@ -194,21 +211,27 @@ namespace
 
                 setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
+            else
+            {
+                infoLog() << "Missing field input!" << std::endl;
 
-            if(cFunction3D)
+            }
+
+            if(pFunction3D && cFunction3D)
             {
                 std::shared_ptr<const Grid<3>> cGrid3D = std::dynamic_pointer_cast< const Grid<3>>(cFunction3D->domain());
                 const ValueArray<Scalar>& cFieldValues3D = cFunction3D->values();
                 const ValueArray<Point3>& cGridPoints3D = cGrid3D->points();
-            }
 
-            if(pFunction3D)
-            {
                 std::shared_ptr<const Grid<3>> pGrid3D = std::dynamic_pointer_cast< const Grid<3>>(pFunction3D->domain());
                 const ValueArray<Scalar>& pFieldValues3D = pFunction3D->values();
                 const ValueArray<Point3>& pGridPoints3D = pGrid3D->points();
 
                 setResult("RidgesAndValleys 3D", std::shared_ptr<const Grid<3>>(pGrid3D));
+            }
+            else
+            {
+                infoLog() << "Missing field input!" << std::endl;
 
             }
 
