@@ -163,6 +163,13 @@ namespace
             }
         }
 
+        bool isExtrema()
+        {
+            //TODO:
+            //  - Hesse Matrix in Zentrum von Zelle berechnen
+            //  - auf negative Definitheit in diesem Punkt prüfen
+        }
+
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
@@ -193,8 +200,9 @@ namespace
 
                 //const ValueArray<Cell>& pGridCells2D = pGrid2D->cells();
 
-                std::vector<Cell> interestingCell;
-                std::vector<int> interestingCellIndices;
+                std::vector<Cell> interestingCells;
+                std::vector<int> interestingCellsIndices;
+                std::vector<int> extremaCellsIndices;
 
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
@@ -203,11 +211,21 @@ namespace
                     if(isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D))
                     {
                         //infoLog() << "------------------found interesting cell at: " << i << std::endl;
-                        interestingCell.push_back(cell);
-                        interestingCellIndices.push_back(i);
+                        interestingCells.push_back(cell);
+                        interestingCellsIndices.push_back(i);
                     }
                 }
                 infoLog() << "finished" << std::endl;
+
+                for(size_t j = 0; j < interestingCellsIndices.size(); ++j)
+                {
+                    //infoLog() << "cell indices: " << interestingCellsIndices[j] << std::endl;
+                    if(isExtrema())
+                    {
+                        //infoLog() << "------------------found extrema cell at: " << interestingCellsIndices[j] << std::endl;
+                        extremaCellsIndices.push_back(interestingCellsIndices[j]);
+                    }
+                }
 
                 setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
