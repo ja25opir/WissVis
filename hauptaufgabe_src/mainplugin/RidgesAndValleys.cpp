@@ -72,7 +72,7 @@ namespace
             }
         }
 
-        std::valarray<double> getPartialGradient(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > > evaluator, int cellIndex, std::valarray<double> baseVector) {
+        std::valarray<double> getPartialGradient(const ValueArray<Point2>& gridPoints, Cell& cell, int cellIndex, const ValueArray<Scalar>& fieldValues, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector) {
             double epsilon = 1e-4;
             std::valarray<double> gradient;
 
@@ -89,7 +89,7 @@ namespace
             }
             else
             {
-                evaluatorPoint[0] -= 2*epsilon;
+                evaluatorPoint -= 2 * epsilon * baseVectorTensor;
 
                 if(evaluator->reset(evaluatorPoint, 0))
                 {
@@ -121,8 +121,11 @@ namespace
 
             for(size_t i = 0; i < cell.numVertices(); ++i)
             {
+                gradientX = getPartialGradient(gridPoints, cell, i, fieldValues, evaluator, baseVectorX);
+                gradientY = getPartialGradient(gridPoints, cell, i, fieldValues, evaluator, baseVectorY);
+
                 //TODO Randbetrachtung
-                Point2 evaluatorPointX = gridPoints[cell.index(i)];
+                /*Point2 evaluatorPointX = gridPoints[cell.index(i)];
                 Point2 evaluatorPointY = evaluatorPointX;
 
                 evaluatorPointX[0] += epsilon; //first in x direction
@@ -177,7 +180,7 @@ namespace
                     {
                         infoLog() << "outside domain" << std::endl;
                     }
-                }
+                }**/
 
                 gradientCombined = gradientX + gradientY;
                 gradientVector.push_back(gradientCombined);
@@ -248,7 +251,9 @@ namespace
                     }
                 }
                 infoLog() << "finished" << std::endl;
+                infoLog() << interestingCells.size() << std::endl; //5485
 
+                /*
                 for(size_t j = 0; j < interestingCellsIndices.size(); ++j)
                 {
                     //infoLog() << "cell indices: " << interestingCellsIndices[j] << std::endl;
@@ -257,7 +262,7 @@ namespace
                         //infoLog() << "------------------found extrema cell at: " << interestingCellsIndices[j] << std::endl;
                         extremaCellsIndices.push_back(interestingCellsIndices[j]);
                     }
-                }
+                }*/
 
                 setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
             }
@@ -267,7 +272,7 @@ namespace
 
             }
 
-            if(pFunction3D && cFunction3D)
+            /*if(pFunction3D && cFunction3D)
             {
                 std::shared_ptr<const Grid<3>> cGrid3D = std::dynamic_pointer_cast< const Grid<3>>(cFunction3D->domain());
                 const ValueArray<Scalar>& cFieldValues3D = cFunction3D->values();
@@ -283,7 +288,7 @@ namespace
             {
                 infoLog() << "Missing field input!" << std::endl;
 
-            }
+            }*/
 
         }
     };
