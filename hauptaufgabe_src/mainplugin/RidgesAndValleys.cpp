@@ -70,7 +70,39 @@ namespace
             {
                 return false;
             }
+        }
 
+        std::valarray<double> getPartialGradient(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > > evaluator, int cellIndex, std::valarray<double> baseVector) {
+            double epsilon = 1e-4;
+            std::valarray<double> gradient;
+
+            Point2 evaluatorPoint = gridPoints[cell.index(cellIndex)];
+            Point2 baseVectorTensor;
+            baseVectorTensor = {baseVector[0], baseVector[1]};
+
+            evaluatorPoint += epsilon * baseVectorTensor;
+
+            if(evaluator->reset(evaluatorPoint, 0))
+            {
+                auto value = evaluator->value();
+                gradient = ((value[0] - fieldValues[cell.index(cellIndex)][0]) / epsilon) * baseVector;
+            }
+            else
+            {
+                evaluatorPoint[0] -= 2*epsilon;
+
+                if(evaluator->reset(evaluatorPoint, 0))
+                {
+                    auto value = evaluator->value();
+                    gradient = ((fieldValues[cell.index(cellIndex)][0] - value[0]) / epsilon) * baseVector;
+                }
+                else
+                {
+                    infoLog() << "outside domain" << std::endl;
+                }
+            }
+
+            return gradient;
         }
 
         bool isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field)
