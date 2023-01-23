@@ -72,11 +72,19 @@ namespace
             }
         }
 
-        std::valarray<double> getPartialGradient(const ValueArray<Point2>& gridPoints, Cell& cell, int cellIndex, const ValueArray<Scalar>& fieldValues, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector) {
+        /**
+         * @brief getPartialGradient
+         * @param evaluatorPoint - point coordinates
+         * @param pointValue - point scalar value
+         * @param fieldValues
+         * @param evaluator
+         * @param baseVector
+         * @return
+         */
+        std::valarray<double> getPartialGradient(Point2 evaluatorPoint, double pointValue, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector) {
             double epsilon = 1e-4;
             std::valarray<double> gradient;
 
-            Point2 evaluatorPoint = gridPoints[cell.index(cellIndex)];
             Point2 baseVectorTensor;
             baseVectorTensor = {baseVector[0], baseVector[1]};
 
@@ -85,7 +93,7 @@ namespace
             if(evaluator->reset(evaluatorPoint, 0))
             {
                 auto value = evaluator->value();
-                gradient = ((value[0] - fieldValues[cell.index(cellIndex)][0]) / epsilon) * baseVector;
+                gradient = ((value[0] - pointValue) / epsilon) * baseVector;
             }
             else
             {
@@ -94,7 +102,7 @@ namespace
                 if(evaluator->reset(evaluatorPoint, 0))
                 {
                     auto value = evaluator->value();
-                    gradient = ((fieldValues[cell.index(cellIndex)][0] - value[0]) / epsilon) * baseVector;
+                    gradient = ((pointValue - value[0]) / epsilon) * baseVector;
                 }
                 else
                 {
@@ -119,8 +127,10 @@ namespace
 
             for(size_t i = 0; i < cell.numVertices(); ++i)
             {
-                gradientX = getPartialGradient(gridPoints, cell, i, fieldValues, evaluator, baseVectorX);
-                gradientY = getPartialGradient(gridPoints, cell, i, fieldValues, evaluator, baseVectorY);
+                Point2 point = gridPoints[cell.index(i)];
+                double pointVal = fieldValues[cell.index(i)][0];
+                gradientX = getPartialGradient(point, pointVal, evaluator, baseVectorX);
+                gradientY = getPartialGradient(point, pointVal, evaluator, baseVectorY);
 
                 gradientCombined = gradientX + gradientY;
                 gradientVector.push_back(gradientCombined);
@@ -149,10 +159,24 @@ namespace
             return {sumX / 4, sumY / 4};
         }
 
-        bool isExtrema()
+        // more like isMaximum()
+        bool isExtrema(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field)
         {
+            std::valarray<double> gradientX;
+            std::valarray<double> gradientY;
+            std::valarray<double> baseVectorX = {1,0};
+            std::valarray<double> baseVectorY = {0,1};
+            Point2 center = getCellCenter2D(gridPoints, cell);
+            auto evaluator = field->makeEvaluator();
+
+            if(evaluator->reset(center, 0)) {
+                double centerVal = evaluator->value()[0];
+                gradientX = getPartialGradient(center, centerVal, evaluator, baseVectorX);
+                gradientY = getPartialGradient(center, centerVal, evaluator, baseVectorY);
+                // todo ...
+            }
+
             //TODO:
-            //  - Hesse Matrix in Zentrum von Zelle berechnen
             //  - auf negative Definitheit in diesem Punkt prüfen
         }
 
