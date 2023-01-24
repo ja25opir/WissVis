@@ -3,7 +3,8 @@
 #include <fantom/graphics.hpp>
 #include <fantom/register.hpp>
 #include <math.h>
-#include<valarray>
+#include <valarray>
+#include <map>
 
 using namespace fantom;
 
@@ -41,7 +42,7 @@ namespace
         {
         }
 
-        bool compareGradients(std::vector<std::valarray<double>> gradients)
+        std::vector<int> compareGradients(std::vector<std::valarray<double>> gradients)
         {
             /*  Quad
                0----3
@@ -50,26 +51,25 @@ namespace
                1----2
             */
 
+            std::vector<int> edges;
+
             if(signbit(gradients[0][0]) != signbit(gradients[1][0]) || signbit(gradients[0][1]) != signbit(gradients[1][1]))
             {
-                return true;
+                edges.push_back(0);
             }
-            else if(signbit(gradients[0][0]) != signbit(gradients[3][0]) || signbit(gradients[0][1]) != signbit(gradients[3][1]))
+            if(signbit(gradients[1][0]) != signbit(gradients[2][0]) || signbit(gradients[1][1]) != signbit(gradients[2][1]))
             {
-                return true;
+                edges.push_back(1);
             }
-            else if(signbit(gradients[1][0]) != signbit(gradients[2][0]) || signbit(gradients[1][1]) != signbit(gradients[2][1]))
+            if(signbit(gradients[2][0]) != signbit(gradients[3][0]) || signbit(gradients[2][1]) != signbit(gradients[3][1]))
             {
-                return true;
+                edges.push_back(2);
             }
-            else if(signbit(gradients[2][0]) != signbit(gradients[3][0]) || signbit(gradients[2][1]) != signbit(gradients[3][1]))
+            if(signbit(gradients[0][0]) != signbit(gradients[3][0]) || signbit(gradients[0][1]) != signbit(gradients[3][1]))
             {
-                return true;
+                edges.push_back(3);
             }
-            else
-            {
-                return false;
-            }
+            return edges;
         }
 
         /**
@@ -113,7 +113,7 @@ namespace
             return gradient;
         }
 
-        bool isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field)
+        std::vector<Point2> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field)
         {
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
@@ -122,6 +122,7 @@ namespace
 
             std::valarray<double> gradientCombined;
             std::vector<std::valarray<double>> gradientVector;
+            std::vector<Point2> edgeCenters;
 
             auto evaluator = field->makeEvaluator();
 
@@ -139,13 +140,35 @@ namespace
 
             if(!gradientVector.empty())
             {
-                return compareGradients(gradientVector);
+                std::vector<int> edges = compareGradients(gradientVector);
+                if(!edges.empty())
+                {
+                    for(size_t j = 0; j < edges.size(); ++j)
+                    {
+                        edgeCenters.push_back(getEdgeCenter2D(gridPoints, cell, edges[j]));
+                    }
+                }
+            }
+            return edgeCenters;
+        }
+
+        Point2 getEdgeCenter2D(const ValueArray<Point2>& gridPoints, Cell& cell, int edge)
+        {
+            float sumX = 0;
+            float sumY = 0;
+
+            if(edge != 3)
+            {
+                sumX = gridPoints[cell.index(edge)][0] + gridPoints[cell.index(edge+1)][0];
+                sumY = gridPoints[cell.index(edge)][1] + gridPoints[cell.index(edge+1)][1];
             }
             else
             {
-                infoLog() << "empty list" << std::endl;
-                return false;
+                sumX = gridPoints[cell.index(edge)][0] + gridPoints[cell.index(0)][0];
+                sumY = gridPoints[cell.index(edge)][1] + gridPoints[cell.index(0)][1];
             }
+
+            return {sumX/2, sumY/2};
         }
 
         Point2 getCellCenter2D(const ValueArray<Point2>& gridPoints, Cell& cell){
@@ -197,35 +220,40 @@ namespace
                 return;
             }
 
-            if(pFunction2D && cFunction2D)
+            if(pFunction2D)// && cFunction2D)
             {
-                std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
-                const ValueArray<Scalar>& cFieldValues2D = cFunction2D->values();
-                const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
+                //std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
+                //const ValueArray<Scalar>& cFieldValues2D = cFunction2D->values();
+                //const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
 
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
                 const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
-                PointSetBase::BoundingBox pBoundingBox2D = pGrid2D->getBoundingBox();
+                //PointSetBase::BoundingBox pBoundingBox2D = pGrid2D->getBoundingBox();
 
                 //const ValueArray<Cell>& pGridCells2D = pGrid2D->cells();
 
                 std::vector<Cell> interestingCells;
                 std::vector<int> interestingCellsIndices;
+                std::map<int, std::vector<Point2>> ridgeValleyMap;
                 std::vector<int> extremaCellsIndices;
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
                     Cell cell = pGrid2D->cell(i);
-                    if(isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D))
+                    std::vector<Point2> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D);
+
+                    if(!edgePoints.empty())
                     {
                         //infoLog() << "------------------found interesting cell at: " << i << std::endl;
-                        interestingCells.push_back(cell);
+                        //interestingCells.push_back(cell);
                         interestingCellsIndices.push_back(i);
+                        ridgeValleyMap.insert({i, edgePoints});
                     }
                 }
                 infoLog() << "interesting cells found: ";
-                infoLog() << interestingCells.size() << std::endl;
+                infoLog() << ridgeValleyMap.size() << std::endl;
+                //infoLog() << interestingCells.size() << std::endl;
 
                 /*
                 for(size_t j = 0; j < interestingCellsIndices.size(); ++j)
