@@ -3,6 +3,7 @@
 #include <fantom/graphics.hpp>
 #include <fantom/register.hpp>
 #include <math.h>
+#include <Eigen/Eigenvalues>
 #include <valarray>
 #include <map>
 #include "helpers.h"
@@ -126,12 +127,16 @@ namespace
                 std::vector<int> edges = compareGradients(gradientVector);
                 if(!edges.empty())
                 {
-                    for(size_t j = 0; j < edges.size(); ++j)
+                    if(isMaximum(gridPoints, cell, field, epsilon))
                     {
-                        Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
-                        edgeCenters.push_back(edgeCenter3D);
+                        for(size_t j = 0; j < edges.size(); ++j)
+                        {
+                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
+                            edgeCenters.push_back(edgeCenter3D);
+                        }
                     }
+
                 }
             }
             return edgeCenters;
@@ -171,7 +176,15 @@ namespace
                 std::vector<std::valarray<double>> lineVector1 = {gradientXX, gradientXY};
                 std::vector<std::valarray<double>> lineVector2 = {gradientYX, gradientYY};
 
-                std::vector<std::vector<std::valarray<double>>> hesseMatrix = {lineVector1, lineVector2};
+                //std::vector<std::vector<std::valarray<double>>> hesseMatrix = {lineVector1, lineVector2};
+
+                Eigen::Matrix2d hesseMatrixEigen(2,2);
+                hesseMatrixEigen << gradientXX[0], gradientXY[0], gradientYX[1], gradientYY[1];
+
+                Eigen::Vector2cd eigenValues = hesseMatrixEigen.eigenvalues();
+
+                infoLog() << "EigenValues: " << eigenValues << std::endl;
+
 
                 return true;
             }
