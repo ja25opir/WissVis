@@ -6,19 +6,20 @@
 #include <valarray>
 #include <map>
 #include "helpers.h"
+#include <fantom-plugins/utils/Graphics/ObjectRenderer.hpp>
 
 using namespace fantom;
 
 namespace
 {
-    class RidgesAndValleys : public DataAlgorithm
+    class RidgesAndValleys : public VisAlgorithm
     {
 
     public:
-        struct Options : public DataAlgorithm::Options
+        struct Options : public VisAlgorithm::Options
         {
             Options( fantom::Options::Control& control )
-                : DataAlgorithm::Options( control )
+                : VisAlgorithm::Options( control )
             {
                 add<Field<2,Scalar>>( "Field_Cellbased2D", "A 2D cell based scalar field", definedOn<Grid<2>>(Grid<2>::Cells));
                 add<Field<2,Scalar>>( "Field_Pointbased2D", "A 2D point based scalar field", definedOn<Grid<2>>(Grid<2>::Points));
@@ -30,6 +31,7 @@ namespace
             }
         };
 
+        /*
         struct DataOutputs : public DataAlgorithm::DataOutputs
         {
             DataOutputs(fantom::DataOutputs::Control& control)
@@ -38,10 +40,19 @@ namespace
                 add <const Grid<2>> ("RidgesAndValleys 2D");
                 add <const Grid<3>> ("RidgesAndValleys 3D");
             }
+        };*/
+
+        struct VisOutputs : public VisAlgorithm::VisOutputs
+        {
+            VisOutputs( fantom::VisOutputs::Control& control )
+                : VisAlgorithm::VisOutputs( control )
+            {
+                addGraphics("Markers");
+            }
         };
 
         RidgesAndValleys (InitData& data)
-            : DataAlgorithm (data)
+            : VisAlgorithm (data)
         {
         }
 
@@ -85,7 +96,7 @@ namespace
             return gradient;
         }
 
-        std::vector<Point2> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
+        std::vector<Point3> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
         {
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
@@ -94,7 +105,7 @@ namespace
 
             std::valarray<double> gradientCombined;
             std::vector<std::valarray<double>> gradientVector;
-            std::vector<Point2> edgeCenters;
+            std::vector<Point3> edgeCenters;
 
             auto evaluator = field->makeEvaluator();
 
@@ -117,7 +128,9 @@ namespace
                 {
                     for(size_t j = 0; j < edges.size(); ++j)
                     {
-                        edgeCenters.push_back(getEdgeCenter2D(gridPoints, cell, edges[j]));
+                        Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
+                        edgeCenters.push_back(edgeCenter3D);
                     }
                 }
             }
@@ -168,6 +181,20 @@ namespace
         }
 
 
+        void markPoints(std::vector<Point3>& points, Color& color)
+        {
+            auto const& system = graphics::GraphicsSystem::instance();
+            auto performanceObjectRenderer = std::make_shared<graphics::ObjectRenderer>(system);
+            performanceObjectRenderer->reserve(graphics::ObjectRenderer::ObjectType::SPHERE, points.size());
+
+            for(size_t i = 0; i != points.size(); ++i)
+            {
+                performanceObjectRenderer->addSphere(points[i], 0.35, color);
+            }
+
+            setGraphics("Markers", performanceObjectRenderer->commit());
+        }
+
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
             std::shared_ptr<const Function<Scalar>> cFunction2D = options.get<Function<Scalar>>("Field_Cellbased2D");
@@ -201,13 +228,20 @@ namespace
 
                 std::vector<Cell> interestingCells;
                 std::vector<int> interestingCellsIndices;
-                std::map<int, std::vector<Point2>> ridgeValleyMap;
+                std::map<int, std::vector<Point3>> ridgeValleyMap;
                 std::vector<int> maximumCellsIndices;
+
+                std::list<Point3> pointList;
+
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
                     Cell cell = pGrid2D->cell(i);
-                    std::vector<Point2> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon);
+                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon);
+
+                    for (size_t i = 0; i < edgePoints.size(); ++i) {
+                        pointList.push_back(Point3( edgePoints[i] ));
+                    }
 
                     if(!edgePoints.empty())
                     {
@@ -217,14 +251,18 @@ namespace
                         ridgeValleyMap.insert({i, edgePoints});
                     }
                 }
+
+                std::vector<Point3> markerPoints(pointList.begin(), pointList.end());
+
+                Color color( 0.75, 0.75, 0.0 );
+                markPoints(markerPoints, color);
+
                 infoLog() << "interesting cells found: ";
                 infoLog() << ridgeValleyMap.size() << std::endl;
-                //infoLog() << ridgeValleyMap[interestingCellsIndices[0]].size() << std::endl;
 
                 //infoLog() << interestingCells.size() << std::endl;
 
-
-                for(size_t j = 0; j < interestingCells.size(); ++j)
+                /*for(size_t j = 0; j < interestingCells.size(); ++j)
                 {
                     //infoLog() << "cell indices: " << interestingCellsIndices[j] << std::endl;
                     if(isMaximum(pGridPoints2D, interestingCells[j], pField2D, epsilon))
@@ -234,7 +272,7 @@ namespace
                     }
                 }
 
-                setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));
+                setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));*/
             }
             else
             {
