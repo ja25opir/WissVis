@@ -13,14 +13,14 @@ using namespace fantom;
 
 namespace
 {
-    class RidgesAndValleys : public VisAlgorithm
+    class RidgesAndValleys : public DataAlgorithm
     {
 
     public:
-        struct Options : public VisAlgorithm::Options
+        struct Options : public DataAlgorithm::Options
         {
             Options( fantom::Options::Control& control )
-                : VisAlgorithm::Options( control )
+                : DataAlgorithm::Options( control )
             {
                 add<Field<2,Scalar>>( "Field_Cellbased2D", "A 2D cell based scalar field", definedOn<Grid<2>>(Grid<2>::Cells));
                 add<Field<2,Scalar>>( "Field_Pointbased2D", "A 2D point based scalar field", definedOn<Grid<2>>(Grid<2>::Points));
@@ -28,32 +28,23 @@ namespace
                 add<Field<3,Scalar>>( "Field_Cellbased3D", "A 3D cell based scalar field", definedOn<Grid<3>>(Grid<3>::Cells));
                 add<Field<3,Scalar>>( "Field_Pointbased3D", "A 3D point basedscalar field", definedOn<Grid<3>>(Grid<3>::Points));
 
-                add<double>("Epsilon", "Epsilon value for gradient calculation", 1e-4);
+                add<double>("Epsilon", "Epsilon value for gradient calculation", 1e-3);
             }
         };
 
-        /*
+
         struct DataOutputs : public DataAlgorithm::DataOutputs
         {
             DataOutputs(fantom::DataOutputs::Control& control)
                 : DataAlgorithm::DataOutputs(control)
             {
-                add <const Grid<2>> ("RidgesAndValleys 2D");
-                add <const Grid<3>> ("RidgesAndValleys 3D");
-            }
-        };*/
-
-        struct VisOutputs : public VisAlgorithm::VisOutputs
-        {
-            VisOutputs( fantom::VisOutputs::Control& control )
-                : VisAlgorithm::VisOutputs( control )
-            {
-                addGraphics("Markers");
+                add <LineSet<3>> ("RidgesAndValleys 2D");
+                //add <const Grid<3>> ("RidgesAndValleys 3D");
             }
         };
 
         RidgesAndValleys (InitData& data)
-            : VisAlgorithm (data)
+            : DataAlgorithm (data)
         {
         }
 
@@ -127,6 +118,13 @@ namespace
                 std::vector<int> edges = compareGradients(gradientVector);
                 if(!edges.empty())
                 {
+                    for(size_t j = 0; j < edges.size(); ++j)
+                    {
+                        Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
+                        edgeCenters.push_back(edgeCenter3D);
+                    }
+                    /*
                     if(isMaximum(gridPoints, cell, field, epsilon))
                     {
                         for(size_t j = 0; j < edges.size(); ++j)
@@ -135,7 +133,7 @@ namespace
                             Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
                             edgeCenters.push_back(edgeCenter3D);
                         }
-                    }
+                    }*/
 
                 }
             }
@@ -159,6 +157,12 @@ namespace
             Point2 gradPointX = {center[0]+epsilon, center[1]};
             Point2 gradPointY = {center[0], center[1]+epsilon};
 
+            /*
+            infoLog() << "epsilon: " << epsilon << std::endl;
+            infoLog() << "centerPoint: " << center << std::endl;
+            infoLog() << "gradPointX: " << gradPointX << std::endl;
+            infoLog() << "gradPointY: " << gradPointY << std::endl;
+*/
             auto evaluator = field->makeEvaluator();
 
             if(evaluator->reset(center, 0))
@@ -166,46 +170,40 @@ namespace
                 double centerVal = evaluator->value()[0];
                 gradientX = getPartialGradient(center, centerVal, evaluator, baseVectorX, epsilon);
                 gradientY = getPartialGradient(center, centerVal, evaluator, baseVectorY, epsilon);
+            }
+            if(evaluator->reset(gradPointX,0))
+            {
+                gradientXX = getPartialGradient(gradPointX, evaluator->value()[0], evaluator, baseVectorX, epsilon);
+                gradientXY = getPartialGradient(gradPointX, evaluator->value()[0], evaluator, baseVectorY, epsilon);
+            }
+            if(evaluator->reset(gradPointY, 0))
+            {
+                gradientYX = getPartialGradient(gradPointY, evaluator->value()[0], evaluator, baseVectorX, epsilon);
+                gradientYY = getPartialGradient(gradPointY, evaluator->value()[0], evaluator, baseVectorY, epsilon);
+            }
 
-                gradientXX = getPartialGradient(gradPointX, gradientX[0], evaluator, baseVectorX, epsilon);
-                gradientYX = getPartialGradient(gradPointX, gradientY[0], evaluator, baseVectorX, epsilon);
+            //std::vector<std::valarray<double>> lineVector1 = {gradientXX, gradientXY};
+            //std::vector<std::valarray<double>> lineVector2 = {gradientYX, gradientYY};
+            //std::vector<std::vector<std::valarray<double>>> hesseMatrix = {lineVector1, lineVector2};
 
-                gradientXY = getPartialGradient(gradPointY, gradientX[0], evaluator, baseVectorY, epsilon);
-                gradientYY = getPartialGradient(gradPointY, gradientY[0], evaluator, baseVectorY, epsilon);
+            Eigen::Matrix2d hesseMatrixEigen(2,2);
+            hesseMatrixEigen << gradientXX[0], gradientXY[1], gradientYX[0], gradientYY[1];
 
-                std::vector<std::valarray<double>> lineVector1 = {gradientXX, gradientXY};
-                std::vector<std::valarray<double>> lineVector2 = {gradientYX, gradientYY};
+            Eigen::Vector2cd eigenValues = hesseMatrixEigen.eigenvalues();
 
-                //std::vector<std::vector<std::valarray<double>>> hesseMatrix = {lineVector1, lineVector2};
-
-                Eigen::Matrix2d hesseMatrixEigen(2,2);
-                hesseMatrixEigen << gradientXX[0], gradientXY[0], gradientYX[1], gradientYY[1];
-
-                Eigen::Vector2cd eigenValues = hesseMatrixEigen.eigenvalues();
-
-                infoLog() << "EigenValues: " << eigenValues << std::endl;
-
-
+            if(compareEigenvalues(eigenValues))
+            {
                 return true;
             }
 
-            //TODO:
-            //  - auf negative Definitheit in diesem Punkt prüfen
-        }
-
-
-        void markPoints(std::vector<Point3>& points, Color& color)
-        {
-            auto const& system = graphics::GraphicsSystem::instance();
-            auto performanceObjectRenderer = std::make_shared<graphics::ObjectRenderer>(system);
-            performanceObjectRenderer->reserve(graphics::ObjectRenderer::ObjectType::SPHERE, points.size());
-
-            for(size_t i = 0; i != points.size(); ++i)
-            {
-                performanceObjectRenderer->addSphere(points[i], 0.35, color);
-            }
-
-            setGraphics("Markers", performanceObjectRenderer->commit());
+            //infoLog() << "EigenValues: " << eigenValues << std::endl;
+            /*
+            infoLog() << "gradientXX: " <<  gradientXX[0] << ", " << gradientXX[1] <<std::endl;
+            infoLog() << "gradientXY: " <<  gradientXY[0] << ", " << gradientXY[1] <<std::endl;
+            infoLog() << "gradientYX: " <<  gradientYX[0] << ", " << gradientYX[1] <<std::endl;
+            infoLog() << "gradientYY: " <<  gradientYY[0] << ", " << gradientYY[1] <<std::endl<<std::endl;
+            */
+            return false;
         }
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
@@ -226,66 +224,37 @@ namespace
                 return;
             }
 
-            if(pFunction2D)// && cFunction2D)
+            if(pFunction2D)
             {
-                //std::shared_ptr<const Grid<2>> cGrid2D = std::dynamic_pointer_cast< const Grid<2>>(cFunction2D->domain());
-                //const ValueArray<Scalar>& cFieldValues2D = cFunction2D->values();
-                //const ValueArray<Point2>& cGridPoints2D = cGrid2D->points();
-
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
                 const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
-                //PointSetBase::BoundingBox pBoundingBox2D = pGrid2D->getBoundingBox();
 
-                //const ValueArray<Cell>& pGridCells2D = pGrid2D->cells();
-
-                std::vector<Cell> interestingCells;
-                std::vector<int> interestingCellsIndices;
-                std::map<int, std::vector<Point3>> ridgeValleyMap;
-                std::vector<int> maximumCellsIndices;
-
-                std::list<Point3> pointList;
-
+                LineSet<3> ridgeSet;
+                std::vector<size_t> cellLineIndices;
+                size_t lineIndex = 0;
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
                     Cell cell = pGrid2D->cell(i);
-                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon);
-
-                    for (size_t i = 0; i < edgePoints.size(); ++i) {
-                        pointList.push_back(Point3( edgePoints[i] ));
-                    }
+                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon);     
 
                     if(!edgePoints.empty())
                     {
-                        //infoLog() << "------------------found interesting cell at: " << i << std::endl;
-                        interestingCells.push_back(cell);
-                        interestingCellsIndices.push_back(i);
-                        ridgeValleyMap.insert({i, edgePoints});
+                        for (size_t j = 0; j < edgePoints.size(); ++j) {
+                            cellLineIndices.push_back(lineIndex);
+                            ridgeSet.addPoint(Point3(edgePoints[j]));
+                            ++lineIndex;
+                        }
+                        ridgeSet.addLine(cellLineIndices);
+                        cellLineIndices.clear();
                     }
+
                 }
+                infoLog() << "ridgeSet num points: " << ridgeSet.numPoints() <<std::endl;
+                infoLog() << "ridgeSet num lines: " << ridgeSet.numLines() <<std::endl;
 
-                std::vector<Point3> markerPoints(pointList.begin(), pointList.end());
-
-                Color color( 0.75, 0.75, 0.0 );
-                markPoints(markerPoints, color);
-
-                infoLog() << "interesting cells found: ";
-                infoLog() << ridgeValleyMap.size() << std::endl;
-
-                //infoLog() << interestingCells.size() << std::endl;
-
-                /*for(size_t j = 0; j < interestingCells.size(); ++j)
-                {
-                    //infoLog() << "cell indices: " << interestingCellsIndices[j] << std::endl;
-                    if(isMaximum(pGridPoints2D, interestingCells[j], pField2D, epsilon))
-                    {
-                        //infoLog() << "------------------found extrema cell at: " << interestingCellsIndices[j] << std::endl;
-                        maximumCellsIndices.push_back(interestingCellsIndices[j]);
-                    }
-                }
-
-                setResult("RidgesAndValleys 2D", std::shared_ptr<const Grid<2>>(pGrid2D));*/
+                setResult("RidgesAndValleys 2D", std::make_shared<LineSet<3>>(ridgeSet));
             }
             else
             {

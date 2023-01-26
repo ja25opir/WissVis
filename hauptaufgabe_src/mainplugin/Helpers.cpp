@@ -1,6 +1,7 @@
 #include <fantom/dataset.hpp>
 #include <math.h>
 #include <valarray>
+#include <Eigen/Eigenvalues>
 
 using namespace fantom;
 
@@ -33,6 +34,15 @@ std::vector<int> compareGradients(std::vector<std::valarray<double>> gradients)
         edges.push_back(3);
     }
     return edges;
+}
+
+bool compareEigenvalues(Eigen::Vector2cd eigenValues)
+{
+    if(signbit(eigenValues(0).real()) && signbit(eigenValues(1).real()))
+    {
+        return true;
+    }
+    return false;
 }
 
 Point2 getEdgeCenter2D(const ValueArray<Point2>& gridPoints, Cell& cell, int edge)
