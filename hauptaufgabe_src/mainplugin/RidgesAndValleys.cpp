@@ -1,13 +1,9 @@
 #include <fantom/algorithm.hpp>
 #include <fantom/dataset.hpp>
-#include <fantom/graphics.hpp>
 #include <fantom/register.hpp>
-#include <math.h>
 #include <Eigen/Eigenvalues>
 #include <valarray>
-#include <map>
 #include "helpers.h"
-#include <fantom-plugins/utils/Graphics/ObjectRenderer.hpp>
 
 using namespace fantom;
 
@@ -23,7 +19,6 @@ namespace
                 : DataAlgorithm::Options( control )
             {
                 add<Field<2,Scalar>>( "Field_Pointbased2D", "A 2D point based scalar field", definedOn<Grid<2>>(Grid<2>::Points));
-                add<Field<3,Scalar>>( "Field_Pointbased3D", "A 3D point basedscalar field", definedOn<Grid<3>>(Grid<3>::Points));
 
                 add<double>("Epsilon", "Epsilon value for gradient calculation", 1e-3);
                 add<double>("z_Scale", "Factor to visualize scalar values on z-Axis", 100);
@@ -48,26 +43,27 @@ namespace
         }
 
         /**
-         * @brief getPartialGradient (for 2D Points only!)
+         * @brief getPartialGradient - computes partial gradient for given arguments
          * @param evaluatorPoint - point coordinates
          * @param pointValue - point scalar value
          * @param evaluator - field evaluator for interpolation
          * @param baseVector - 2D base vector
          * @param epsilon - stepsize for gradient calculation
-         * @return
+         * @return gradient - partial gradient
          */
-        std::valarray<double> getPartialGradient(Point2 evaluatorPoint, double pointValue, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector, double epsilon) {
+        std::valarray<double> getPartialGradient(Point2 evaluatorPoint, double pointValue, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector, double epsilon)
+        {
             std::valarray<double> gradient;
-
             Point2 baseVectorP2 = {baseVector[0], baseVector[1]};
-
             evaluatorPoint += epsilon * baseVectorP2;
 
+            //forward difference
             if(evaluator->reset(evaluatorPoint, 0))
             {
                 auto value = evaluator->value();
                 gradient = ((value[0] - pointValue) / epsilon) * baseVector;
             }
+            //backward difference
             else
             {
                 evaluatorPoint -= 2 * epsilon * baseVectorP2;
@@ -85,37 +81,43 @@ namespace
             return gradient;
         }
 
+        /**
+         * @brief isInterestingCell - determines if a cell is a stationary or turning point
+         * @param gridPoints - array of grid points
+         * @param cell - grid cell
+         * @param field - 2D scalar field
+         * @param epsilon - stepsize for gradient calculation
+         * @param zValScale - z-axis scale for visualization
+         * @return edgeCenters - edge center points of interesting cells
+         * @return classifier - indicates characteristica of examined cell
+         */
         std::pair<std::vector<Point3>, std::string> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon, double zValScale)
         {
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
             std::valarray<double> baseVectorX = {1,0};
             std::valarray<double> baseVectorY = {0,1};
-
             std::valarray<double> gradientCombined;
             std::vector<std::valarray<double>> gradientVector;
-            std::vector<Point3> edgeCenters;
-
 
             auto evaluator = field->makeEvaluator();
 
             for(size_t i = 0; i < cell.numVertices(); ++i)
             {
                 Point2 point = gridPoints[cell.index(i)];
-                //double pointVal = fieldValues[cell.index(i)][0];
                 if(evaluator->reset(point, 0))
                 {
                     double pointVal = evaluator->value()[0];
                     gradientX = getPartialGradient(point, pointVal, evaluator, baseVectorX, epsilon);
                     gradientY = getPartialGradient(point, pointVal, evaluator, baseVectorY, epsilon);
                 }
-
                 gradientCombined = gradientX + gradientY;
                 gradientVector.push_back(gradientCombined);
-                //infoLog() << "gradient: " << gradientCombined[0] << "; " << gradientCombined[1] << std::endl;
             }
 
+            std::vector<Point3> edgeCenters;
             std::string classifier = "";
+
             if(!gradientVector.empty())
             {
                 std::vector<int> edges = compareGradients(gradientVector);
@@ -123,50 +125,29 @@ namespace
                 {
                     classifier = classifyExtrema(gridPoints, cell, field, epsilon);
 
-                    if(classifier == "max")
+                    for(size_t j = 0; j < edges.size(); ++j)
                     {
-                        for(size_t j = 0; j < edges.size(); ++j)
-                        {
-                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                            double zVal = 0;
-                            if(evaluator->reset(edgeCenter2D, 0)){
-                               zVal = evaluator->value()[0] * zValScale;
-                            }
-                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
-                            edgeCenters.push_back(edgeCenter3D);
+                        Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                        double zVal = 0;
+                        if(evaluator->reset(edgeCenter2D, 0)){
+                           zVal = evaluator->value()[0] * zValScale;
                         }
-                    }
-                    if(classifier == "min")
-                    {
-                        for(size_t j = 0; j < edges.size(); ++j)
-                        {
-                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                            double zVal = 0;
-                            if(evaluator->reset(edgeCenter2D, 0)){
-                               zVal = evaluator->value()[0] * zValScale;
-                            }
-                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
-                            edgeCenters.push_back(edgeCenter3D);
-                        }
-                    }
-                    if(classifier == "saddle")
-                    {
-                        for(size_t j = 0; j < edges.size(); ++j)
-                        {
-                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                            double zVal = 0;
-                            if(evaluator->reset(edgeCenter2D, 0)){
-                               zVal = evaluator->value()[0] * zValScale;
-                            }
-                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
-                            edgeCenters.push_back(edgeCenter3D);
-                        }
+                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
+                        edgeCenters.push_back(edgeCenter3D);
                     }
                 }
             }
             return {edgeCenters, classifier};
         }
 
+        /**
+         * @brief getHessianMatrix - computes hessian matrix
+         * @param evaluatorPoint - point coordinates
+         * @param evaluator - field evaluator for interpolation
+         * @param epsilon - stepsize for gradient calculation
+         * @param dimension - size of matrix
+         * @return hessianMatrix - matrix with second order partial derivates
+         */
         Eigen::Matrix2d getHessianMatrix(std::valarray<double> evaluatorPoint, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, double epsilon, size_t dimension)
         {
             double f1, f2, f3, f4;
@@ -175,14 +156,14 @@ namespace
             Eigen::Matrix2d hessianMatrix(dimension,dimension);
             std::valarray<double> hessianArray(4);
 
-            for(size_t i = 0; i < dimension; ++i)
+            for(size_t x = 0; x < dimension; ++x)
             {
-                for (size_t j = 0; j < dimension; ++j)
+                for (size_t y = 0; y < dimension; ++y)
                 {
                     std::valarray<double> baseVectorX = {0,0};
                     std::valarray<double> baseVectorY = {0,0};
-                    baseVectorX[i] = 1;
-                    baseVectorY[j] = 1;
+                    baseVectorX[x] = 1;
+                    baseVectorY[y] = 1;
 
                     std::valarray<double> f1Array = evaluatorPoint + (epsilon*baseVectorX) + (epsilon*baseVectorY);
                     Point2 f1Point = {f1Array[0], f1Array[1]};
@@ -221,14 +202,21 @@ namespace
                     ++counter;
                 }
             }
+
             hessianMatrix << hessianArray[0], hessianArray[1], hessianArray[2], hessianArray[3];
             return hessianMatrix;
         }
 
-
-
+        /**
+         * @brief classifyExtrema - classifies type of extrema
+         * @param gridPoints - array of grid points
+         * @param cell - grid cell
+         * @param field - 2D scalar field
+         * @param epsilon - stepsize for gradient calculation
+         * @return string - indicates characteristica of examined cell
+         */
         std::string classifyExtrema(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
-        {
+        {            
             std::valarray<double> baseVectorX = {1,0};
             std::valarray<double> baseVectorY = {0,1};
 
@@ -238,10 +226,7 @@ namespace
             auto evaluator = field->makeEvaluator();
 
             Eigen::Matrix2d hessianMatrix = getHessianMatrix(centerArray, evaluator, epsilon, 2);
-            //infoLog() << "Hesse Matrix: " << hessianMatrix << std::endl;
-
             Eigen::Vector2cd eigenValues = hessianMatrix.eigenvalues();
-            //infoLog() << hesseMatrixEigen << std::endl;
 
             if(compareEigenvaluesMax(eigenValues))
             {
@@ -254,33 +239,18 @@ namespace
             return "saddle";
         }
 
+
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
             std::shared_ptr<const Function<Scalar>> pFunction2D = options.get<Function<Scalar>>("Field_Pointbased2D");
             std::shared_ptr<const Field<2, Scalar>> pField2D = options.get<Field<2, Scalar>>("Field_Pointbased2D");
 
-            std::shared_ptr<const Function<Scalar>> pFunction3D = options.get<Function<Scalar>>("Field_Pointbased3D");
-
             double epsilon = options.get<double>("Epsilon");
-
             double zScale = options.get<double>("z_Scale");
-
-            if(!pFunction2D && !pFunction3D)
-            {
-                infoLog() << "No input field!" << std::endl;
-                return;
-            }
 
             if(pFunction2D)
             {
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
-                //infoLog() << "EigenValues: " << eigenValues << std::endl;
-                /*
-                infoLog() << "gradientXX: " <<  gradientXX[0] << ", " << gradientXX[1] <<std::endl;
-                infoLog() << "gradientXY: " <<  gradientXY[0] << ", " << gradientXY[1] <<std::endl;
-                infoLog() << "gradientYX: " <<  gradientYX[0] << ", " << gradientYX[1] <<std::endl;
-                infoLog() << "gradientYY: " <<  gradientYY[0] << ", " << gradientYY[1] <<std::endl<<std::endl;
-                */
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
 
                 LineSet<3> ridgeSetMax;
@@ -322,14 +292,16 @@ namespace
                         ridgeSetAll.addLine(cellLineIndicesAll);
                         cellLineIndicesAll.clear();
                     }
-
                 }
-                //infoLog() << "ridgeSet num points: " << ridgeSet.numPoints() <<std::endl;
-                //infoLog() << "ridgeSet num lines: " << ridgeSet.numLines() <<std::endl;
 
                 setResult("Ridges", std::make_shared<LineSet<3>>(ridgeSetMax));
                 setResult("Valleys", std::make_shared<LineSet<3>>(ridgeSetMin));
                 setResult("All possible extrema", std::make_shared<LineSet<3>>(ridgeSetAll));
+            }
+            else
+            {
+                infoLog() << "No input field!" << std::endl;
+                return;
             }
         }
     };
