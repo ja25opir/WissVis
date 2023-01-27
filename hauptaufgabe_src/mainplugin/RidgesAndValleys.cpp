@@ -9,6 +9,13 @@ using namespace fantom;
 
 namespace
 {
+    /**
+     * @brief RidgesAndValleys - computation of ridges and valleys in 2D pointbased dataset
+     * @param Field_Pointbased2D - 2D pointbased scalar field, based on 2D structured grid
+     * @param Epsilon - stepsize for gradient calculation
+     * @param z_Scale - z-axis scale for visualization
+     * @return LineSet - LineSets with Ridges, Valleys and all extrema
+     */
     class RidgesAndValleys : public DataAlgorithm
     {
 
