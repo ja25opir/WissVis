@@ -85,7 +85,6 @@ namespace
                     infoLog() << "outside domain" << std::endl;
                 }
             }
-
             return gradient;
         }
 
@@ -123,95 +122,102 @@ namespace
                 std::vector<int> edges = compareGradients(gradientVector);
                 if(!edges.empty())
                 {
-                    for(size_t j = 0; j < edges.size(); ++j)
-                    {
-                        Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                        double zVal = 0;
-                        if(evaluator->reset(edgeCenter2D, 0)){
-                           zVal = evaluator->value()[0] * zValScale;
-                        }
-                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
-                        edgeCenters.push_back(edgeCenter3D);
-                    }
-                    /*
                     if(isMaximum(gridPoints, cell, field, epsilon))
                     {
                         for(size_t j = 0; j < edges.size(); ++j)
                         {
                             Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
+                            double zVal = 0;
+                            if(evaluator->reset(edgeCenter2D, 0)){
+                               zVal = evaluator->value()[0] * zValScale;
+                            }
+                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
                             edgeCenters.push_back(edgeCenter3D);
                         }
-                    }*/
-
+                    }
                 }
             }
             return edgeCenters;
         }
 
+        Eigen::Matrix2d getHessianMatrix(std::valarray<double> evaluatorPoint, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, double epsilon, size_t dimension)
+        {
+            double f1, f2, f3, f4;
+
+            Eigen::Matrix2d hessianMatrix(dimension,dimension);
+            std::valarray<double> hessianArray(4);
+
+            for(size_t i = 0; i < dimension; ++i)
+            {
+                for (size_t j = 0; j < dimension; ++j)
+                {
+                    std::valarray<double> baseVectorX = {0,0};
+                    std::valarray<double> baseVectorY = {0,0};
+                    baseVectorX[i] = 1;
+                    baseVectorY[j] = 1;
+
+                    std::valarray<double> f1Array = evaluatorPoint + (epsilon*baseVectorX) + (epsilon*baseVectorY);
+                    Point2 f1Point = {f1Array[0], f1Array[1]};
+
+                    if(evaluator->reset(f1Point, 0))
+                    {
+                        f1 = evaluator->value()[0];
+                    }
+
+                    std::valarray<double> f2Array = evaluatorPoint + (epsilon*baseVectorX) - (epsilon*baseVectorY);
+                    Point2 f2Point = {f2Array[0], f2Array[1]};
+
+                    if(evaluator->reset(f2Point, 0))
+                    {
+                        f2 = evaluator->value()[0];
+                    }
+
+                    std::valarray<double> f3Array = evaluatorPoint - (epsilon*baseVectorX) + (epsilon*baseVectorY);
+                    Point2 f3Point = {f3Array[0], f3Array[1]};
+
+                    if(evaluator->reset(f3Point, 0))
+                    {
+                        f3 = evaluator->value()[0];
+                    }
+
+                    std::valarray<double> f4Array = evaluatorPoint - (epsilon*baseVectorX) - (epsilon*baseVectorY);
+                    Point2 f4Point = {f4Array[0], f4Array[1]};
+
+                    if(evaluator->reset(f4Point, 0))
+                    {
+                        f4 = evaluator->value()[0];
+                    }
+
+                    double secondDerivative = (f1 - f2 - f3 + f4) / (4 * pow(epsilon,2));
+                    hessianArray[i+j] = secondDerivative;
+                }
+            }
+            hessianMatrix << hessianArray[0], hessianArray[1], hessianArray[2], hessianArray[3];
+            return hessianMatrix;
+        }
+
+
+
         bool isMaximum(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
         {
-            std::valarray<double> gradientX;
-            std::valarray<double> gradientY;
-
-            std::valarray<double> gradientXX;
-            std::valarray<double> gradientYX;
-            std::valarray<double> gradientXY;
-            std::valarray<double> gradientYY;
-
             std::valarray<double> baseVectorX = {1,0};
             std::valarray<double> baseVectorY = {0,1};
 
             Point2 center = getCellCenter2D(gridPoints, cell);
-            Point2 gradPointX = {center[0]+epsilon, center[1]};
-            Point2 gradPointY = {center[0], center[1]+epsilon};
+            std::valarray<double> centerArray = {center[0], center[1]};
 
-            /*
-            infoLog() << "epsilon: " << epsilon << std::endl;
-            infoLog() << "centerPoint: " << center << std::endl;
-            infoLog() << "gradPointX: " << gradPointX << std::endl;
-            infoLog() << "gradPointY: " << gradPointY << std::endl;
-*/
             auto evaluator = field->makeEvaluator();
 
-            if(evaluator->reset(center, 0))
-            {
-                double centerVal = evaluator->value()[0];
-                gradientX = getPartialGradient(center, centerVal, evaluator, baseVectorX, epsilon);
-                gradientY = getPartialGradient(center, centerVal, evaluator, baseVectorY, epsilon);
-            }
+            Eigen::Matrix2d hessianMatrix = getHessianMatrix(centerArray, evaluator, epsilon, 2);
 
-                gradientXX = getPartialGradient(gradPointX, gradientX[0], evaluator, baseVectorX, epsilon); // [X, 0]
 
-                gradientXY = getPartialGradient(gradPointX, gradientX[0], evaluator, baseVectorY, epsilon);
-                infoLog() << "X" << gradientXY[0] << " Y" << gradientXY[1] << std::endl;
-
-                gradientYX = getPartialGradient(gradPointY, gradientY[1], evaluator, baseVectorX, epsilon);
-                infoLog() << "X" << gradientYX[0] << " Y" << gradientYX[1] << std::endl;
-                gradientYY = getPartialGradient(gradPointY, gradientY[1], evaluator, baseVectorY, epsilon);
-
-            //std::vector<std::valarray<double>> lineVector1 = {gradientXX, gradientXY};
-            //std::vector<std::valarray<double>> lineVector2 = {gradientYX, gradientYY};
-            //std::vector<std::vector<std::valarray<double>>> hesseMatrix = {lineVector1, lineVector2};
-
-            Eigen::Matrix2d hesseMatrixEigen(2,2);
-            hesseMatrixEigen << gradientXX[0], gradientXY[1], gradientYX[0], gradientYY[1];
-
-            Eigen::Vector2cd eigenValues = hesseMatrixEigen.eigenvalues();
+            Eigen::Vector2cd eigenValues = hessianMatrix.eigenvalues();
             //infoLog() << hesseMatrixEigen << std::endl;
 
             if(compareEigenvalues(eigenValues))
             {
                 return true;
             }
-
-            //infoLog() << "EigenValues: " << eigenValues << std::endl;
-            /*
-            infoLog() << "gradientXX: " <<  gradientXX[0] << ", " << gradientXX[1] <<std::endl;
-            infoLog() << "gradientXY: " <<  gradientXY[0] << ", " << gradientXY[1] <<std::endl;
-            infoLog() << "gradientYX: " <<  gradientYX[0] << ", " << gradientYX[1] <<std::endl;
-            infoLog() << "gradientYY: " <<  gradientYY[0] << ", " << gradientYY[1] <<std::endl<<std::endl;
-            */
             return false;
         }
 
@@ -238,6 +244,13 @@ namespace
             {
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
                 const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
+                //infoLog() << "EigenValues: " << eigenValues << std::endl;
+                /*
+                infoLog() << "gradientXX: " <<  gradientXX[0] << ", " << gradientXX[1] <<std::endl;
+                infoLog() << "gradientXY: " <<  gradientXY[0] << ", " << gradientXY[1] <<std::endl;
+                infoLog() << "gradientYX: " <<  gradientYX[0] << ", " << gradientYX[1] <<std::endl;
+                infoLog() << "gradientYY: " <<  gradientYY[0] << ", " << gradientYY[1] <<std::endl<<std::endl;
+                */
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
 
                 LineSet<3> ridgeSet;
