@@ -29,6 +29,8 @@ namespace
                 add<Field<3,Scalar>>( "Field_Pointbased3D", "A 3D point basedscalar field", definedOn<Grid<3>>(Grid<3>::Points));
 
                 add<double>("Epsilon", "Epsilon value for gradient calculation", 1e-3);
+
+                add<double>("z_Scale", "Factor to visualize scalar values on z-Axis", 100);
             }
         };
 
@@ -60,10 +62,9 @@ namespace
         std::valarray<double> getPartialGradient(Point2 evaluatorPoint, double pointValue, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, std::valarray<double> baseVector, double epsilon) {
             std::valarray<double> gradient;
 
-            Point2 baseVectorTensor;
-            baseVectorTensor = {baseVector[0], baseVector[1]};
+            Point2 baseVectorP2 = {baseVector[0], baseVector[1]};
 
-            evaluatorPoint += epsilon * baseVectorTensor;
+            evaluatorPoint += epsilon * baseVectorP2;
 
             if(evaluator->reset(evaluatorPoint, 0))
             {
@@ -72,7 +73,7 @@ namespace
             }
             else
             {
-                evaluatorPoint -= 2 * epsilon * baseVectorTensor;
+                evaluatorPoint -= 2 * epsilon * baseVectorP2;
 
                 if(evaluator->reset(evaluatorPoint, 0))
                 {
@@ -88,7 +89,7 @@ namespace
             return gradient;
         }
 
-        std::vector<Point3> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
+        std::vector<Point3> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field, double epsilon, double zValScale)
         {
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
@@ -104,9 +105,13 @@ namespace
             for(size_t i = 0; i < cell.numVertices(); ++i)
             {
                 Point2 point = gridPoints[cell.index(i)];
-                double pointVal = fieldValues[cell.index(i)][0];
-                gradientX = getPartialGradient(point, pointVal, evaluator, baseVectorX, epsilon);
-                gradientY = getPartialGradient(point, pointVal, evaluator, baseVectorY, epsilon);
+                //double pointVal = fieldValues[cell.index(i)][0];
+                if(evaluator->reset(point, 0))
+                {
+                    double pointVal = evaluator->value()[0];
+                    gradientX = getPartialGradient(point, pointVal, evaluator, baseVectorX, epsilon);
+                    gradientY = getPartialGradient(point, pointVal, evaluator, baseVectorY, epsilon);
+                }
 
                 gradientCombined = gradientX + gradientY;
                 gradientVector.push_back(gradientCombined);
@@ -121,7 +126,11 @@ namespace
                     for(size_t j = 0; j < edges.size(); ++j)
                     {
                         Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
-                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], 0};
+                        double zVal = 0;
+                        if(evaluator->reset(edgeCenter2D, 0)){
+                           zVal = evaluator->value()[0] * zValScale;
+                        }
+                        Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
                         edgeCenters.push_back(edgeCenter3D);
                     }
                     /*
@@ -171,16 +180,15 @@ namespace
                 gradientX = getPartialGradient(center, centerVal, evaluator, baseVectorX, epsilon);
                 gradientY = getPartialGradient(center, centerVal, evaluator, baseVectorY, epsilon);
             }
-            if(evaluator->reset(gradPointX,0))
-            {
-                gradientXX = getPartialGradient(gradPointX, evaluator->value()[0], evaluator, baseVectorX, epsilon);
-                gradientXY = getPartialGradient(gradPointX, evaluator->value()[0], evaluator, baseVectorY, epsilon);
-            }
-            if(evaluator->reset(gradPointY, 0))
-            {
-                gradientYX = getPartialGradient(gradPointY, evaluator->value()[0], evaluator, baseVectorX, epsilon);
-                gradientYY = getPartialGradient(gradPointY, evaluator->value()[0], evaluator, baseVectorY, epsilon);
-            }
+
+                gradientXX = getPartialGradient(gradPointX, gradientX[0], evaluator, baseVectorX, epsilon); // [X, 0]
+
+                gradientXY = getPartialGradient(gradPointX, gradientX[0], evaluator, baseVectorY, epsilon);
+                infoLog() << "X" << gradientXY[0] << " Y" << gradientXY[1] << std::endl;
+
+                gradientYX = getPartialGradient(gradPointY, gradientY[1], evaluator, baseVectorX, epsilon);
+                infoLog() << "X" << gradientYX[0] << " Y" << gradientYX[1] << std::endl;
+                gradientYY = getPartialGradient(gradPointY, gradientY[1], evaluator, baseVectorY, epsilon);
 
             //std::vector<std::valarray<double>> lineVector1 = {gradientXX, gradientXY};
             //std::vector<std::valarray<double>> lineVector2 = {gradientYX, gradientYY};
@@ -190,6 +198,7 @@ namespace
             hesseMatrixEigen << gradientXX[0], gradientXY[1], gradientYX[0], gradientYY[1];
 
             Eigen::Vector2cd eigenValues = hesseMatrixEigen.eigenvalues();
+            //infoLog() << hesseMatrixEigen << std::endl;
 
             if(compareEigenvalues(eigenValues))
             {
@@ -217,6 +226,7 @@ namespace
 
             double epsilon = options.get<double>("Epsilon");
 
+            double zScale = options.get<double>("z_Scale");
 
             if(!cFunction2D && !pFunction2D && !cFunction3D && !pFunction3D)
             {
@@ -237,7 +247,7 @@ namespace
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
                     Cell cell = pGrid2D->cell(i);
-                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon);     
+                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon, zScale);
 
                     if(!edgePoints.empty())
                     {
