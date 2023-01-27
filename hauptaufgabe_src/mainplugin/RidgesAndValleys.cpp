@@ -22,14 +22,10 @@ namespace
             Options( fantom::Options::Control& control )
                 : DataAlgorithm::Options( control )
             {
-                add<Field<2,Scalar>>( "Field_Cellbased2D", "A 2D cell based scalar field", definedOn<Grid<2>>(Grid<2>::Cells));
                 add<Field<2,Scalar>>( "Field_Pointbased2D", "A 2D point based scalar field", definedOn<Grid<2>>(Grid<2>::Points));
-
-                add<Field<3,Scalar>>( "Field_Cellbased3D", "A 3D cell based scalar field", definedOn<Grid<3>>(Grid<3>::Cells));
                 add<Field<3,Scalar>>( "Field_Pointbased3D", "A 3D point basedscalar field", definedOn<Grid<3>>(Grid<3>::Points));
 
                 add<double>("Epsilon", "Epsilon value for gradient calculation", 1e-3);
-
                 add<double>("z_Scale", "Factor to visualize scalar values on z-Axis", 100);
             }
         };
@@ -40,8 +36,9 @@ namespace
             DataOutputs(fantom::DataOutputs::Control& control)
                 : DataAlgorithm::DataOutputs(control)
             {
-                add <LineSet<3>> ("RidgesAndValleys 2D");
-                //add <const Grid<3>> ("RidgesAndValleys 3D");
+                add <LineSet<3>> ("Ridges");
+                add <LineSet<3>> ("Valleys");
+                add <LineSet<3>> ("All possible extrema");
             }
         };
 
@@ -88,7 +85,7 @@ namespace
             return gradient;
         }
 
-        std::vector<Point3> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, const ValueArray<Scalar>& fieldValues, std::shared_ptr<const Field<2, Scalar>> field, double epsilon, double zValScale)
+        std::pair<std::vector<Point3>, std::string> isInterestingCell(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon, double zValScale)
         {
             std::valarray<double> gradientX;
             std::valarray<double> gradientY;
@@ -98,6 +95,7 @@ namespace
             std::valarray<double> gradientCombined;
             std::vector<std::valarray<double>> gradientVector;
             std::vector<Point3> edgeCenters;
+
 
             auto evaluator = field->makeEvaluator();
 
@@ -117,12 +115,41 @@ namespace
                 //infoLog() << "gradient: " << gradientCombined[0] << "; " << gradientCombined[1] << std::endl;
             }
 
+            std::string classifier = "";
             if(!gradientVector.empty())
             {
                 std::vector<int> edges = compareGradients(gradientVector);
                 if(!edges.empty())
                 {
-                    if(isMaximum(gridPoints, cell, field, epsilon))
+                    classifier = classifyExtrema(gridPoints, cell, field, epsilon);
+
+                    if(classifier == "max")
+                    {
+                        for(size_t j = 0; j < edges.size(); ++j)
+                        {
+                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                            double zVal = 0;
+                            if(evaluator->reset(edgeCenter2D, 0)){
+                               zVal = evaluator->value()[0] * zValScale;
+                            }
+                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
+                            edgeCenters.push_back(edgeCenter3D);
+                        }
+                    }
+                    if(classifier == "min")
+                    {
+                        for(size_t j = 0; j < edges.size(); ++j)
+                        {
+                            Point2 edgeCenter2D = getEdgeCenter2D(gridPoints, cell, edges[j]);
+                            double zVal = 0;
+                            if(evaluator->reset(edgeCenter2D, 0)){
+                               zVal = evaluator->value()[0] * zValScale;
+                            }
+                            Point3 edgeCenter3D = {edgeCenter2D[0], edgeCenter2D[1], zVal};
+                            edgeCenters.push_back(edgeCenter3D);
+                        }
+                    }
+                    if(classifier == "saddle")
                     {
                         for(size_t j = 0; j < edges.size(); ++j)
                         {
@@ -137,12 +164,13 @@ namespace
                     }
                 }
             }
-            return edgeCenters;
+            return {edgeCenters, classifier};
         }
 
         Eigen::Matrix2d getHessianMatrix(std::valarray<double> evaluatorPoint, std::unique_ptr< FieldEvaluator< 2UL, Tensor<double> > >& evaluator, double epsilon, size_t dimension)
         {
             double f1, f2, f3, f4;
+            int counter = 0;
 
             Eigen::Matrix2d hessianMatrix(dimension,dimension);
             std::valarray<double> hessianArray(4);
@@ -189,7 +217,8 @@ namespace
                     }
 
                     double secondDerivative = (f1 - f2 - f3 + f4) / (4 * pow(epsilon,2));
-                    hessianArray[i+j] = secondDerivative;
+                    hessianArray[counter] = secondDerivative;
+                    ++counter;
                 }
             }
             hessianMatrix << hessianArray[0], hessianArray[1], hessianArray[2], hessianArray[3];
@@ -198,7 +227,7 @@ namespace
 
 
 
-        bool isMaximum(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
+        std::string classifyExtrema(const ValueArray<Point2>& gridPoints, Cell& cell, std::shared_ptr<const Field<2, Scalar>> field, double epsilon)
         {
             std::valarray<double> baseVectorX = {1,0};
             std::valarray<double> baseVectorY = {0,1};
@@ -209,32 +238,34 @@ namespace
             auto evaluator = field->makeEvaluator();
 
             Eigen::Matrix2d hessianMatrix = getHessianMatrix(centerArray, evaluator, epsilon, 2);
-
+            //infoLog() << "Hesse Matrix: " << hessianMatrix << std::endl;
 
             Eigen::Vector2cd eigenValues = hessianMatrix.eigenvalues();
             //infoLog() << hesseMatrixEigen << std::endl;
 
-            if(compareEigenvalues(eigenValues))
+            if(compareEigenvaluesMax(eigenValues))
             {
-                return true;
+                return "max";
             }
-            return false;
+            if(compareEigenvaluesMin(eigenValues))
+            {
+                return "min";
+            }
+            return "saddle";
         }
 
         virtual void execute( const Algorithm::Options& options, const volatile bool& /*abortFlag*/ ) override
         {
-            std::shared_ptr<const Function<Scalar>> cFunction2D = options.get<Function<Scalar>>("Field_Cellbased2D");
             std::shared_ptr<const Function<Scalar>> pFunction2D = options.get<Function<Scalar>>("Field_Pointbased2D");
             std::shared_ptr<const Field<2, Scalar>> pField2D = options.get<Field<2, Scalar>>("Field_Pointbased2D");
 
-            std::shared_ptr<const Function<Scalar>> cFunction3D = options.get<Function<Scalar>>("Field_Cellbased3D");
             std::shared_ptr<const Function<Scalar>> pFunction3D = options.get<Function<Scalar>>("Field_Pointbased3D");
 
             double epsilon = options.get<double>("Epsilon");
 
             double zScale = options.get<double>("z_Scale");
 
-            if(!cFunction2D && !pFunction2D && !cFunction3D && !pFunction3D)
+            if(!pFunction2D && !pFunction3D)
             {
                 infoLog() << "No input field!" << std::endl;
                 return;
@@ -243,7 +274,6 @@ namespace
             if(pFunction2D)
             {
                 std::shared_ptr<const Grid<2>> pGrid2D = std::dynamic_pointer_cast< const Grid<2>>(pFunction2D->domain());
-                const ValueArray<Scalar>& pFieldValues2D = pFunction2D->values();
                 //infoLog() << "EigenValues: " << eigenValues << std::endl;
                 /*
                 infoLog() << "gradientXX: " <<  gradientXX[0] << ", " << gradientXX[1] <<std::endl;
@@ -253,56 +283,54 @@ namespace
                 */
                 const ValueArray<Point2>& pGridPoints2D = pGrid2D->points();
 
-                LineSet<3> ridgeSet;
-                std::vector<size_t> cellLineIndices;
-                size_t lineIndex = 0;
+                LineSet<3> ridgeSetMax;
+                LineSet<3> ridgeSetMin;
+                LineSet<3> ridgeSetAll;
+                std::vector<size_t> cellLineIndicesMax;
+                std::vector<size_t> cellLineIndicesMin;
+                std::vector<size_t> cellLineIndicesAll;
+                size_t lineIndexMax = 0;
+                size_t lineIndexMin = 0;
+                size_t lineIndexAll = 0;
 
                 for(size_t i = 0; i < pGrid2D->numCells(); ++i)
                 {
                     Cell cell = pGrid2D->cell(i);
-                    std::vector<Point3> edgePoints = isInterestingCell(pGridPoints2D, cell, pFieldValues2D, pField2D, epsilon, zScale);
+                    std::pair<std::vector<Point3>, std::string> edgePoints = isInterestingCell(pGridPoints2D, cell, pField2D, epsilon, zScale);
 
-                    if(!edgePoints.empty())
+                    if(!edgePoints.first.empty())
                     {
-                        for (size_t j = 0; j < edgePoints.size(); ++j) {
-                            cellLineIndices.push_back(lineIndex);
-                            ridgeSet.addPoint(Point3(edgePoints[j]));
-                            ++lineIndex;
+                        for (size_t j = 0; j < edgePoints.first.size(); ++j) {
+                            if(edgePoints.second == "max") {
+                                cellLineIndicesMax.push_back(lineIndexMax);
+                                ridgeSetMax.addPoint(Point3(edgePoints.first[j]));
+                                ++lineIndexMax;
+                            }
+                            if(edgePoints.second == "min") {
+                                cellLineIndicesMin.push_back(lineIndexMin);
+                                ridgeSetMin.addPoint(Point3(edgePoints.first[j]));
+                                ++lineIndexMin;
+                            }
+                            cellLineIndicesAll.push_back(lineIndexAll);
+                            ridgeSetAll.addPoint(Point3(edgePoints.first[j]));
+                            ++lineIndexAll;
                         }
-                        ridgeSet.addLine(cellLineIndices);
-                        cellLineIndices.clear();
+                        ridgeSetMax.addLine(cellLineIndicesMax);
+                        cellLineIndicesMax.clear();
+                        ridgeSetMin.addLine(cellLineIndicesMin);
+                        cellLineIndicesMin.clear();
+                        ridgeSetAll.addLine(cellLineIndicesAll);
+                        cellLineIndicesAll.clear();
                     }
 
                 }
-                infoLog() << "ridgeSet num points: " << ridgeSet.numPoints() <<std::endl;
-                infoLog() << "ridgeSet num lines: " << ridgeSet.numLines() <<std::endl;
+                //infoLog() << "ridgeSet num points: " << ridgeSet.numPoints() <<std::endl;
+                //infoLog() << "ridgeSet num lines: " << ridgeSet.numLines() <<std::endl;
 
-                setResult("RidgesAndValleys 2D", std::make_shared<LineSet<3>>(ridgeSet));
+                setResult("Ridges", std::make_shared<LineSet<3>>(ridgeSetMax));
+                setResult("Valleys", std::make_shared<LineSet<3>>(ridgeSetMin));
+                setResult("All possible extrema", std::make_shared<LineSet<3>>(ridgeSetAll));
             }
-            else
-            {
-                infoLog() << "Missing field input!" << std::endl;
-
-            }
-
-            /*if(pFunction3D && cFunction3D)
-            {
-                std::shared_ptr<const Grid<3>> cGrid3D = std::dynamic_pointer_cast< const Grid<3>>(cFunction3D->domain());
-                const ValueArray<Scalar>& cFieldValues3D = cFunction3D->values();
-                const ValueArray<Point3>& cGridPoints3D = cGrid3D->points();
-
-                std::shared_ptr<const Grid<3>> pGrid3D = std::dynamic_pointer_cast< const Grid<3>>(pFunction3D->domain());
-                const ValueArray<Scalar>& pFieldValues3D = pFunction3D->values();
-                const ValueArray<Point3>& pGridPoints3D = pGrid3D->points();
-
-                setResult("RidgesAndValleys 3D", std::shared_ptr<const Grid<3>>(pGrid3D));
-            }
-            else
-            {
-                infoLog() << "Missing field input!" << std::endl;
-
-            }*/
-
         }
     };
 

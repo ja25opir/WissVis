@@ -36,9 +36,18 @@ std::vector<int> compareGradients(std::vector<std::valarray<double>> gradients)
     return edges;
 }
 
-bool compareEigenvalues(Eigen::Vector2cd eigenValues)
+bool compareEigenvaluesMax(Eigen::Vector2cd eigenValues)
 {
     if(signbit(eigenValues(0).real()) && signbit(eigenValues(1).real()))
+    {
+        return true;
+    }
+    return false;
+}
+
+bool compareEigenvaluesMin(Eigen::Vector2cd eigenValues)
+{
+    if(eigenValues(0).real() > 0 && eigenValues(1).real() > 0)
     {
         return true;
     }
